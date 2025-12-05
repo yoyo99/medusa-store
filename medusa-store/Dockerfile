@@ -1,49 +1,47 @@
-# --- Étape de Build (pour installer les dépendances et builder l'application) ---
+# --- Étape de Build ---
 FROM node:20-alpine AS builder
 
-# Définir le répertoire de travail dans le conteneur
 WORKDIR /app
 
-# Copier les fichiers package.json et package-lock.json
+# Copie des fichiers de dépendances
 COPY package*.json ./
 
-# Installer les dépendances
-# Utiliser --omit=dev si vous ne voulez pas les devDependencies en production
+# Installation des dépendances (clean)
 RUN npm install --omit=dev
 
-# Copier le reste du code de l'application
+# Copie du code source
 COPY . .
 
-# Exécuter la commande de build de Medusa
-# Cela va compiler le backend et l'admin UI (si configuré)
+# Build de l'application (Backend + Admin si configuré)
 RUN npm run build
 
-# --- Étape de Production (pour exécuter l'application) ---
+# --- Étape de Production ---
 FROM node:20-alpine
 
-# Définir le répertoire de travail
 WORKDIR /app
 
-# Copier les fichiers nécessaires de l'étape de build
+# 1. On récupère les modules node installés
 COPY --from=builder /app/node_modules ./node_modules
+
+# 2. On récupère les fichiers package
 COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/dist ./dist  # Le code compilé
-COPY --from=builder /app/src ./src    # Si vous avez des fichiers non compilés nécessaires
+
+# 3. On récupère le dossier de build (dist)
+# NOTE : Si ton projet est en pur JavaScript sans TypeScript, il est possible que 'dist' n'existe pas.
+# Dans le doute pour Medusa, on copie le dossier buildé.
+COPY --from=builder /app/dist ./dist
+
+# 4. On récupère la configuration Medusa (Essentiel !)
 COPY --from=builder /app/medusa-config.js ./
-COPY --from=builder /app/medusa-entry.js ./ # Si vous utilisez un point d'entrée personnalisé
-COPY --from=builder /app/.env.example ./.env.example # Si vous avez un exemple d'env
 
-# Copier les fichiers spécifiques aux plugins (ex: medusa-config.js)
-# Vous devrez peut-être ajuster ces lignes si vous avez des fichiers de configuration personnalisés
-# pour vos plugins dans le dossier racine ou d'autres sous-dossiers
-COPY --from=builder /app/medusa-config.js ./medusa-config.js
-# ... ajoutez d'autres fichiers de configuration spécifiques si nécessaire (e.g. pour un plugin)
+# 5. On récupère le dossier public (pour les uploads locaux ou fichiers statiques)
+# L'option "|| true" n'existant pas nativement en COPY Docker simple, 
+# on assume que le dossier public existe ou on le crée au cas où pour éviter une erreur
+RUN mkdir -p public
+COPY --from=builder /app/public ./public
 
-# Exposer le port de Medusa (par défaut 9000)
+# Expose le port
 EXPOSE 9000
 
-# Commande de démarrage
-# Les migrations doivent être exécutées avant de démarrer le serveur
-# `npx medusa db:migrate` va utiliser les variables d'environnement injectées par Coolify
-# `npm run start` (qui exécute `medusa start`) démarrera le serveur
+# Démarrage : Migrations DB puis Lancement Serveur
 CMD ["sh", "-c", "npx medusa db:migrate && npm run start"]
