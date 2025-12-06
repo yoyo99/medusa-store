@@ -1,36 +1,19 @@
-# --- Étape 1 : Build ---
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-COPY package*.json ./
-
-# CORRECTION : On installe TOUT (y compris les devDependencies)
-RUN npm install
-
-COPY . .
-
-# Compilation du projet
-RUN npm run build
-
-# --- Étape 2 : Production ---
 FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-# CORRECTION : On réinstalle proprement uniquement les dépendances de prod
-RUN npm install --omit=dev
+# 1. Installation des dépendances (toutes, pour permettre le build)
+RUN npm install
 
-# Copie des fichiers compilés (le dossier dist)
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/medusa-config.js ./
+COPY . .
 
-# CORRECTION : On crée juste le dossier public vide au lieu de le copier
-RUN mkdir -p public
+# 2. Compilation (Le résultat ira là où Medusa le décide, probablement .medusa/)
+RUN npm run build
 
 EXPOSE 9000
 
-# Démarrage
-CMD ["sh", "-c", "npx medusa db:migrate && npm run start"]
+# 3. Démarrage
+# On lance les migrations DB puis le serveur
+CMD ["sh", "-c", "npx medusa db:migrate && npx medusa start"]
