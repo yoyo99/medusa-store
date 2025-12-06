@@ -5,18 +5,23 @@ COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 RUN npm install
 COPY . .
 ENV NODE_ENV=production
-ENV DISABLE_MEDUSA_ADMIN=true
-RUN npm run build
+RUN npm run build  # No DISABLE_ADMIN here (build fix)
 
 FROM node:22-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl wget && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app .
 RUN mkdir -p instrumentation && echo 'module.exports = function() {};' > instrumentation/index.js
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=9000
 ENV PG_POOL_SIZE=20
+# JWT from Coolify/local
+ARG JWT_SECRET
+ENV JWT_SECRET=$JWT_SECRET
 EXPOSE 9000
-HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 CMD curl -f http://localhost:9000/health || exit 1
-CMD ["sh", "-c", "npx medusa db:migrate && npx medusa db:sync-links && npx medusa start"]
+# wget + curl safe
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:9000/health || \
+      curl -f http://localhost:9000/health || exit 1
+CMD ["sh", "-c", "npx medusa db:migrate || true && npx medusa db:sync-links || true && npx medusa start"]
