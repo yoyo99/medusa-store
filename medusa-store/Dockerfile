@@ -5,7 +5,7 @@ COPY package*.json yarn.lock* pnpm-lock.yaml* ./
 RUN npm install
 COPY . .
 ENV NODE_ENV=production
-RUN npm run build  # No DISABLE_ADMIN here (build fix)
+RUN npm run build
 
 FROM node:22-slim
 WORKDIR /app
@@ -16,11 +16,11 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=9000
 ENV PG_POOL_SIZE=20
-# JWT from Coolify/local
 ARG JWT_SECRET
 ENV JWT_SECRET=$JWT_SECRET
+ARG COOKIE_SECRET
+ENV COOKIE_SECRET=$COOKIE_SECRET
 EXPOSE 9000
-# wget + curl safe
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:9000/health || \
       curl -f http://localhost:9000/health || exit 1
